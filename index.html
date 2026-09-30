@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forja de Localización: Dark Souls</title>
+    <style>
+        body { background-color: #0b0b0b; color: #d1c4a9; font-family: 'Georgia', serif; margin: 0; padding: 15px; background-image: radial-gradient(circle at center, #1a1815 0%, #0b0b0b 100%); min-height: 100vh; }
+        
+        /* Nuevo estilo para el botón de salir */
+        .header-controls { text-align: right; margin-bottom: -20px; position: relative; z-index: 10; }
+        .btn-logout { background-color: transparent; color: #8b8173; border: 1px solid #3c3222; padding: 5px 10px; font-size: 11px; cursor: pointer; border-radius: 2px; transition: all 0.2s; font-family: 'Georgia', serif; }
+        .btn-logout:hover { color: #e57373; border-color: #d32f2f; }
+        
+        h1 { text-align: center; font-size: 22px; border-bottom: 1px solid #3c3222; padding-bottom: 15px; color: #c07a3c; text-shadow: 2px 2px 4px #000; }
+        .btn-n8n { background: linear-gradient(to bottom, #4a3419, #24180a); color: #d1c4a9; padding: 12px; border: 1px solid #c07a3c; width: 100%; font-weight: bold; font-size: 16px; margin-bottom: 25px; border-radius: 2px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.8); transition: all 0.3s ease; }
+        .btn-n8n:active { background: #c07a3c; color: #0b0b0b; }
+        .card { background-color: #141311; border: 1px solid #2a2520; margin-bottom: 15px; padding: 15px; border-radius: 2px; box-shadow: inset 0 0 15px rgba(0,0,0,0.9); }
+        .term-title { font-size: 19px; color: #e8e4d9; margin: 0 0 5px 0; font-weight: normal; }
+        .term-category { font-size: 11px; color: #6b6356; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 1px;}
+        .term-translation { font-size: 16px; color: #c07a3c; margin-bottom: 5px; font-style: italic; border-left: 2px solid #3c3222; padding-left: 10px; }
+        .term-context { font-size: 12px; color: #8b8173; margin-bottom: 15px; padding-left: 12px; }
+        .actions { display: flex; gap: 10px; }
+        .btn { flex: 1; padding: 10px; border: 1px solid #333; border-radius: 2px; font-weight: bold; cursor: pointer; background-color: #1a1a1a; color: #6b6356; transition: all 0.2s ease; }
+        .card.approved .btn-approve { background-color: #183018; color: #81c784; border-color: #388e3c; box-shadow: 0 0 8px rgba(56, 142, 60, 0.4); }
+        .card.rejected .btn-reject { background-color: #3b1414; color: #e57373; border-color: #d32f2f; box-shadow: 0 0 8px rgba(211, 47, 47, 0.4); }
+        .proposal-container { display: none; margin-top: 15px; }
+        .proposal-input { width: 100%; box-sizing: border-box; padding: 10px; background: #0f0f0f; color: #d1c4a9; border: 1px solid #c07a3c; margin-bottom: 10px; border-radius: 2px; font-family: 'Georgia', serif; }
+        .proposal-input:focus { outline: none; border-color: #e8e4d9; }
+        .btn-save { background-color: #2a2520; color: #d1c4a9; padding: 8px; border: 1px solid #3c3222; width: 100%; border-radius: 2px; cursor: pointer; }
+        .btn-save:active { background-color: #c07a3c; color: #000; }
+        #loading { text-align: center; color: #8b8173; font-style: italic; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <!-- PANTALLA DE LOGIN RESTRINGIDO -->
+    <div id="login-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #0b0b0b; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; background-image: radial-gradient(circle at center, #1a1815 0%, #0b0b0b 100%);">
+        <div style="background-color: #141311; border: 1px solid #c07a3c; padding: 30px; border-radius: 2px; text-align: center; width: 300px;">
+            <h2 style="color: #c07a3c; margin-top: 0; border-bottom: 1px solid #3c3222; padding-bottom: 15px;">Acceso Restringido</h2>
+            <input type="text" id="api-user" class="proposal-input" placeholder="Usuario (ej: gux2k3)">
+            <input type="password" id="api-pass" class="proposal-input" placeholder="Contraseña">
+            <button class="btn-n8n" style="margin-bottom: 0;" onclick="intentarAcceso()">Autenticar en n8n</button>
+            <div id="login-error" style="color: #e57373; font-size: 12px; margin-top: 10px; display: none;">Credenciales rechazadas por n8n</div>
+        </div>
+    </div>
+
+    <!-- BOTÓN DE CERRAR SESIÓN -->
+    <div class="header-controls">
+        <button class="btn-logout" onclick="cerrarSesion()">Abandonar Forja 🚪</button>
+    </div>
+
+    <h1>Grimorio de Localización</h1>
+    <button class="btn-n8n" onclick="enviarAn8n()">🔥 Sellar Destino (Actualizar DB)</button>
+
+    <div id="loading">Invocando almas desde la base de datos...</div>
+    <div id="glossary-container"></div>
+
+    <script>
+        const GET_WEBHOOK = 'https://remold-good-gauging.ngrok-free.dev/webhook/obtener-glosario';
+        const POST_WEBHOOK = 'https://remold-good-gauging.ngrok-free.dev/webhook/glosario'; 
+        
+        let glosarioDinamico = [];
+        const container = document.getElementById('glossary-container');
+        const loadingIndicator = document.getElementById('loading');
+
+        // --- LÓGICA DE SEGURIDAD ---
+        let authHeader = localStorage.getItem('api_token') || null;
+
+        async function intentarAcceso() {
+            const user = document.getElementById('api-user').value.trim();
+            const pass = document.getElementById('api-pass').value.trim();
+            
+            if(!user || !pass) return;
+
+            const tokenTemporal = 'Basic ' + btoa(user + ':' + pass);
+
+            try {
+                const response = await fetch(GET_WEBHOOK, {
+                    headers: { 
+                        'Authorization': tokenTemporal,
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                if (response.ok) {
+                    authHeader = tokenTemporal;
+                    localStorage.setItem('api_token', authHeader);
+                    
+                    const dbId = (user === 'gux2k3') ? 2 : 4; 
+                    localStorage.setItem('usuario_db_id', dbId);
+                    
+                    document.getElementById('login-screen').style.display = 'none';
+                    
+                    const data = await response.json();
+                    glosarioDinamico = Array.isArray(data) ? data : [data];
+                    loadingIndicator.style.display = 'none';
+                    renderizarGlosario();
+                } else {
+                    document.getElementById('login-error').style.display = 'block';
+                }
+            } catch (error) {
+                console.error("Error de conexión:", error);
+            }
+        }
+
+        function verificarSesion() {
+            if (authHeader) {
+                document.getElementById('login-screen').style.display = 'none';
+                cargarGlosarioDesdeBD();
+            }
+        }
+
+        // NUEVA FUNCIÓN: Destruye los datos locales y recarga la página
+        function cerrarSesion() {
+            localStorage.removeItem('api_token');
+            localStorage.removeItem('usuario_db_id');
+            localStorage.removeItem('progresoDS_V3');
+            location.reload();
+        }
+
+        // --- LÓGICA DE DATOS ---
+        async function cargarGlosarioDesdeBD() {
+            try {
+                const response = await fetch(GET_WEBHOOK, {
+                    headers: { 
+                        'Authorization': authHeader,
+                        'ngrok-skip-browser-warning': 'true' 
+                    }
+                });
+                
+                if (!response.ok) {
+                    if(response.status === 401) {
+                        cerrarSesion();
+                    }
+                    throw new Error('Error de autenticación');
+                }
+                
+                let data = await response.json();
+                glosarioDinamico = Array.isArray(data) ? data : [data];
+                
+                loadingIndicator.style.display = 'none';
+                renderizarGlosario();
+            } catch (error) {
+                loadingIndicator.innerHTML = 'Acceso denegado o servidor desconectado.';
+                console.error(error);
+            }
+        }
+
+        function renderizarGlosario() {
+            container.innerHTML = ''; 
+            glosarioDinamico.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.id = `term_${item.id_termino}`;
+                const traduccionActual = item.traduccion_sugerida || 'Sin traducción sugerida';
+                const nota = item.nota_contexto ? `<div class="term-context">📝 ${item.nota_contexto}</div>` : '';
+                card.innerHTML = `
+                    <h2 class="term-title">${item.termino_original}</h2>
+                    <div class="term-category">${item.categoria}</div>
+                    <div class="term-translation">↳ ${traduccionActual}</div>
+                    ${nota}
+                    <div class="actions">
+                        <button id="btn_approve_${item.id_termino}" class="btn btn-approve" onclick="aprobar(${item.id_termino})">Aprobar</button>
+                        <button id="btn_reject_${item.id_termino}" class="btn btn-reject" onclick="rechazar(${item.id_termino})">Rechazar</button>
+                    </div>
+                    <div class="proposal-container" id="prop_${item.id_termino}">
+                        <input type="text" class="proposal-input" id="input_${item.id_termino}" placeholder="Forja tu propia traducción...">
+                        <button class="btn-save" onclick="guardarPropuesta(${item.id_termino})">Sellar Traducción</button>
+                    </div>
+                `;
+                container.appendChild(card);
+                if(item.estado === 'Aprobado') aprobar(item.id_termino, false);
+                if(item.estado === 'Rechazado') rechazar(item.id_termino, false);
+            });
+            cargarProgresoLocal();
+        }
+
+        function aprobar(id, guardarLocal = true) {
+            const card = document.getElementById(`term_${id}`);
+            card.classList.remove('rejected');
+            card.classList.add('approved');
+            document.getElementById(`prop_${id}`).style.display = 'none';
+            document.getElementById(`btn_approve_${id}`).innerHTML = '✅ Aprobado';
+            document.getElementById(`btn_reject_${id}`).innerHTML = 'Rechazar';
+            if(guardarLocal) guardarProgresoLocal();
+        }
+
+        function rechazar(id, guardarLocal = true) {
+            const card = document.getElementById(`term_${id}`);
+            card.classList.remove('approved');
+            card.classList.add('rejected');
+            document.getElementById(`prop_${id}`).style.display = 'block';
+            document.getElementById(`btn_reject_${id}`).innerHTML = '❌ Rechazado';
+            document.getElementById(`btn_approve_${id}`).innerHTML = 'Aprobar';
+            if(guardarLocal) guardarProgresoLocal();
+        }
+
+        function guardarPropuesta(id) {
+            guardarProgresoLocal();
+            alert("Nueva traducción sellada localmente.");
+        }
+
+        function guardarProgresoLocal() {
+            const estadoLocal = {};
+            glosarioDinamico.forEach(item => {
+                const card = document.getElementById(`term_${item.id_termino}`);
+                if (!card) return;
+                let estado = 'Pendiente';
+                let propuesta = '';
+                if (card.classList.contains('approved')) estado = 'Aprobado';
+                if (card.classList.contains('rejected')) {
+                    estado = 'Rechazado';
+                    propuesta = document.getElementById(`input_${item.id_termino}`).value;
+                }
+                estadoLocal[item.id_termino] = { estado, propuesta };
+            });
+            localStorage.setItem('progresoDS_V3', JSON.stringify(estadoLocal));
+        }
+
+        function cargarProgresoLocal() {
+            const guardado = localStorage.getItem('progresoDS_V3');
+            if (!guardado) return;
+            const estadoLocal = JSON.parse(guardado);
+            Object.keys(estadoLocal).forEach(id => {
+                const data = estadoLocal[id];
+                const input = document.getElementById(`input_${id}`);
+                if (data.estado === 'Aprobado') {
+                    aprobar(id, false); 
+                } else if (data.estado === 'Rechazado') {
+                    rechazar(id, false); 
+                    if (input && data.propuesta) {
+                        input.value = data.propuesta;
+                    }
+                }
+            });
+        }
+
+        async function enviarAn8n() {
+            const resultados = [];
+            const usuarioId = parseInt(localStorage.getItem('usuario_db_id')) || 2; 
+            
+            glosarioDinamico.forEach(item => {
+                const card = document.getElementById(`term_${item.id_termino}`);
+                let estadoFinal = item.estado; 
+                let traduccionFinal = item.traduccion_sugerida;
+
+                if (card.classList.contains('approved')) {
+                    estadoFinal = 'Aprobado';
+                } else if (card.classList.contains('rejected')) {
+                    estadoFinal = 'Rechazado';
+                    const propuestaText = document.getElementById(`input_${item.id_termino}`).value.trim();
+                    if (propuestaText !== '') {
+                        traduccionFinal = propuestaText;
+                    }
+                }
+
+                if (estadoFinal !== item.estado || traduccionFinal !== item.traduccion_sugerida) {
+                    resultados.push({
+                        id_termino: item.id_termino,
+                        estado: estadoFinal,
+                        traduccion_final: traduccionFinal,
+                        id_usuario_aprueba: usuarioId
+                    });
+                }
+            });
+
+            if (resultados.length === 0) {
+                alert("No hay cambios nuevos para forjar en la base de datos.");
+                return;
+            }
+
+            try {
+                const response = await fetch(POST_WEBHOOK, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader 
+                    },
+                    body: JSON.stringify({ datos: resultados })
+                });
+
+                if (response.ok) {
+                    alert('¡Las almas han sido forjadas en la base de datos!');
+                    localStorage.removeItem('progresoDS_V3'); 
+                    location.reload(); 
+                } else {
+                    if(response.status === 401) {
+                        alert('Error: n8n rechazó tus credenciales.');
+                        cerrarSesion();
+                    }
+                    else alert('Error en el servidor: ' + response.status);
+                }
+            } catch (error) {
+                alert('No se pudo conectar al orquestador n8n.');
+            }
+        }
+
+        verificarSesion();
+    </script>
+</body>
+</html>
