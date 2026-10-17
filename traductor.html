@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forja: Estación de Traducción</title>
+    <style>
+        body { background-color: #0b0b0b; color: #d1c4a9; font-family: 'Georgia', serif; margin: 0; padding: 20px; background-image: radial-gradient(circle at center, #1a1815 0%, #0b0b0b 100%); min-height: 100vh; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #3c3222; padding-bottom: 15px; margin-bottom: 20px; }
+        h1 { margin: 0; font-size: 22px; color: #c07a3c; }
+        .btn-logout { background-color: transparent; color: #8b8173; border: 1px solid #3c3222; padding: 5px 10px; cursor: pointer; border-radius: 2px; }
+        
+        /* Contenedor principal para los 3 bloques */
+        #panel-contexto { display: flex; flex-direction: column; gap: 15px; }
+
+        /* Diseño de la fila (4 columnas) */
+        .traduccion-row { 
+            display: grid; 
+            grid-template-columns: 80px 1fr 1fr 160px; /* Anchos: Info, Inglés, Español, Botones */
+            gap: 15px; 
+            background-color: #141311; 
+            border: 1px solid #2a2520; 
+            padding: 15px; 
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+
+        /* Estilos visuales por tipo de contexto */
+        .row-anterior, .row-siguiente { opacity: 0.6; filter: grayscale(50%); border-color: #1a1a1a; }
+        .row-actual { border-color: #c07a3c; box-shadow: inset 0 0 15px rgba(192,122,60,0.1), 0 0 10px rgba(0,0,0,0.5); transform: scale(1.01); z-index: 10; }
+        
+        /* Columna 1: Info */
+        .col-info { font-size: 11px; color: #6b6356; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #2a2520; padding-right: 10px; }
+        .col-info span { margin-bottom: 5px; }
+        .col-info strong { color: #8b8173; }
+
+        /* Columna 2 y 3: Textos (Posicionamiento relativo para botones en la esquina) */
+        .col-texto { position: relative; display: flex; flex-direction: column; }
+        
+        .texto-ingles { background: #0f0f0f; color: #8b8173; padding: 15px; border: 1px solid #3c3222; border-radius: 2px; min-height: 80px; font-style: italic; font-size: 14px; white-space: pre-wrap; height: 100%; box-sizing: border-box; overflow-y: auto; }
+        
+        /* Aquí prepararemos la clase para las coincidencias del glosario en el futuro */
+        .glosario-match { color: #f57c00; font-weight: bold; text-decoration: underline; text-decoration-color: rgba(245, 124, 0, 0.4); }
+
+        .textarea-espanol { width: 100%; box-sizing: border-box; padding: 15px; background: #1a1a1a; color: #d1c4a9; border: 1px solid #3c3222; border-radius: 2px; font-family: 'Georgia', serif; font-size: 15px; resize: vertical; min-height: 100px; height: 100%; }
+        .row-actual .textarea-espanol { border-color: #c07a3c; }
+        .textarea-espanol:focus { outline: none; box-shadow: 0 0 5px rgba(192, 122, 60, 0.5); }
+        .textarea-espanol:disabled { background: #0f0f0f; color: #6b6356; cursor: not-allowed; }
+
+        /* Botones miniatura en las esquinas */
+        .btn-corner { position: absolute; bottom: 8px; right: 8px; background: #2a2520; border: 1px solid #3c3222; color: #d1c4a9; cursor: pointer; padding: 4px 8px; font-size: 12px; border-radius: 2px; display: flex; gap: 5px; opacity: 0.7; transition: opacity 0.2s; }
+        .btn-corner:hover { opacity: 1; background: #3c3222; }
+
+        /* Columna 4: Botones de Acción */
+        .col-acciones { display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+        .btn { padding: 10px; border: 1px solid #c07a3c; border-radius: 2px; font-weight: bold; cursor: pointer; color: #0b0b0b; transition: all 0.2s ease; width: 100%; font-size: 13px; text-align: center; }
+        .btn-main { background: linear-gradient(to bottom, #c07a3c, #a06028); }
+        .btn-main:active { background: #804a1e; }
+        .btn-danger { background: transparent; border-color: #e57373; color: #e57373; }
+        .btn-danger:active { background: #4a1919; }
+
+        /* Estilos para Tablas y Referencias en la Forja */
+        .tabla-origen { width: 100%; border-collapse: collapse; background: #0f0f0f; border: 1px solid #3c3222; border-radius: 2px; }
+        .tabla-origen td { border: 1px solid #3c3222; padding: 10px; font-size: 14px; vertical-align: top; }
+        .celda-edit { width: 100%; box-sizing: border-box; background: #1a1a1a; color: #d1c4a9; border: 1px solid #3c3222; padding: 10px; min-height: 60px; resize: vertical; font-family: 'Georgia', serif; font-size: 14px; margin: 0; }
+        .celda-edit:focus { outline: none; border-color: #c07a3c; box-shadow: 0 0 5px rgba(192, 122, 60, 0.5); }
+        .celda-edit:disabled { background: #0f0f0f; color: #6b6356; cursor: not-allowed; }
+        .badge-ref { display: inline-block; background: rgba(245, 124, 0, 0.1); border: 1px solid #f57c00; color: #f57c00; padding: 3px 6px; border-radius: 3px; font-size: 11px; margin-top: 5px; word-break: break-all; font-weight: bold; }
+        .badge-tabla { display: inline-block; background: #3c3222; color: #d1c4a9; padding: 2px 5px; border-radius: 2px; font-size: 10px; margin-top: 5px; font-weight: bold; text-align: center; }
+    
+
+        /* --- MODO CLARO (Controlado por el Cascarón) --- */
+        :root[data-theme="light"] body { 
+            background-color: #f4f1ea; background-image: none; color: #2a2520; 
+        }
+        :root[data-theme="light"] .card, 
+        :root[data-theme="light"] .traduccion-row { 
+            background-color: #ffffff; border-color: #d1c4a9; box-shadow: 0 2px 10px rgba(0,0,0,0.05); 
+        }
+        :root[data-theme="light"] .input-dark, 
+        :root[data-theme="light"] .textarea-espanol,
+        :root[data-theme="light"] .celda-edit,
+        :root[data-theme="light"] .texto-ingles,
+        :root[data-theme="light"] .tabla-origen,
+        :root[data-theme="light"] #contenedor-cuadricula { 
+            background: #faf9f6; color: #2a2520; border-color: #d1c4a9; 
+        }
+        :root[data-theme="light"] .input-dark:focus,
+        :root[data-theme="light"] .textarea-espanol:focus,
+        :root[data-theme="light"] .celda-edit:focus {
+            border-color: #c07a3c; box-shadow: 0 0 5px rgba(192, 122, 60, 0.3);
+        }
+        :root[data-theme="light"] .btn { background-color: #e8e3d9; color: #4a3419; border-color: #c07a3c; }
+        :root[data-theme="light"] .header, 
+        :root[data-theme="light"] h1 { border-color: #d1c4a9; color: #804a1e; }
+        :root[data-theme="light"] label,
+        :root[data-theme="light"] .col-info { color: #6b6356; }
+        :root[data-theme="light"] .btn-corner { background: #e8e3d9; border-color: #d1c4a9; color: #2a2520; }
+        :root[data-theme="light"] .btn-corner:hover { background: #d1c4a9; }
+        :root[data-theme="light"] .badge-tabla { background: #e8e3d9; color: #804a1e; border: 1px solid #d1c4a9; }
+        :root[data-theme="light"] #login-screen { background-color: #f4f1ea; }
+        :root[data-theme="light"] #login-screen > div { background-color: #ffffff; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Estación de Traducción con Contexto</h1>
+        <button class="btn-logout" onclick="location.href='captura.html'">Volver al Alimentador</button>
+    </div>
+
+    <!-- Barra del Navegador -->
+    <div class="card" style="margin-bottom: 15px; padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-color: #5a4b36; flex-wrap: wrap;">
+        <span style="color: #c07a3c; font-weight: bold;">Navegador:</span>
+        <div style="display: flex; gap: 5px; align-items: center;">
+            <button class="btn" style="width: auto; padding: 5px 10px;" onclick="navegarTraduccion(-1)">◀ Ant</button>
+            <input type="number" id="nav-id" class="input-dark" style="width: 70px; padding: 5px; margin: 0; text-align: center;" placeholder="ID">
+            <button class="btn" style="width: auto; padding: 5px 10px;" onclick="navegarTraduccion(1)">Sig ▶</button>
+            <button class="btn btn-secondary" style="width: auto; padding: 5px 10px; margin: 0;" onclick="buscarPorId()">Ir a ID</button>
+        </div>
+        <div style="display: flex; gap: 5px; align-items: center; border-left: 1px solid #3c3222; padding-left: 15px;">
+            <span style="color: #6b6356; font-size: 12px;">PÁG:</span>
+            <input type="number" id="nav-pag" class="input-dark" style="width: 70px; padding: 5px; margin: 0; text-align: center;" placeholder="Nº">
+            <button class="btn btn-secondary" style="width: auto; padding: 5px 10px; margin: 0;" onclick="buscarPorPagina()">Ir a Pág</button>
+        </div>
+        <div style="flex-grow: 1; text-align: right;">
+            <button class="btn" style="width: auto; padding: 5px 15px; border-color: #c07a3c; color: #c07a3c;" onclick="buscarPendiente()">Volver a Pendientes 🔄</button>
+        </div>
+    </div>
+
+
+    <!-- Contenedor dinámico donde se dibujarán las filas -->
+    <div id="panel-contexto">
+        <p style="text-align: center; color: #8b8173;">Conectando con el oráculo...</p>
+    </div>
+
+    <script>
+        // --- SINCRONIZACIÓN DE TEMA ---
+        // 1. Al cargar la página, lee la preferencia del padre
+        const temaGuardado = localStorage.getItem('forja_theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', temaGuardado);
+
+        // 2. Escuchar en vivo si el usuario aprieta el botón en index.html
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.accion === 'cambiarTema') {
+                document.documentElement.setAttribute('data-theme', event.data.tema);
+            }
+        });
+        
+        const GET_PENDIENTE = 'https://remold-good-gauging.ngrok-free.dev/webhook/obtener-texto?modo=pendiente';
+        const GET_NAVEGAR = 'https://remold-good-gauging.ngrok-free.dev/webhook/obtener-texto?modo=navegar';
+        const GET_GLOSARIO = 'https://remold-good-gauging.ngrok-free.dev/webhook/obtener-texto?modo=glosario'; // <-- NUEVA
+        const POST_TRADUCCION = 'https://remold-good-gauging.ngrok-free.dev/webhook/guardar-traduccion';
+        
+        let authHeader = localStorage.getItem('api_token') || null;
+        let bloqueActual = null; 
+        let modoActual = 'pendiente'; 
+        let glosarioAprobado = []; // <-- NUEVA (AQUÍ SE GUARDARÁ EL DICCIONARIO)
+
+        if (!authHeader) location.href = 'captura.html';
+
+        // Motor unificado de carga
+        async function cargarPantalla(url, modo) {
+            modoActual = modo;
+            const panel = document.getElementById('panel-contexto');
+            panel.innerHTML = '<p style="text-align: center; color: #8b8173;">Conectando con el oráculo...</p>';
+            bloqueActual = null;
+
+            try {
+                const response = await fetch(url, { headers: { 'Authorization': authHeader, 'ngrok-skip-browser-warning': 'true' } });
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    panel.innerHTML = ''; 
+                    data.forEach(bloque => {
+                        panel.appendChild(crearFilaContexto(bloque));
+                        if(bloque.contexto === 'actual') {
+                            bloqueActual = bloque;
+                            // Actualizar los numeritos en la barra superior
+                            document.getElementById('nav-id').value = bloque.id_bloque;
+                            document.getElementById('nav-pag').value = bloque.pagina_origen;
+                        }
+                    });
+                    
+                    setTimeout(() => {
+                        const txtActual = document.getElementById(`traduccion-${bloqueActual.id_bloque}`);
+                        if(txtActual) txtActual.focus();
+                    }, 100);
+                } else {
+                    panel.innerHTML = '<div class="traduccion-row" style="text-align:center; display:block;"><h3 style="color:#c07a3c;">Sin resultados</h3><p>Mesa limpia o el registro no existe.</p></div>';
+                }
+            } catch (error) {
+                console.error(error);
+                panel.innerHTML = '<p style="text-align: center; color: #e57373;">Error de conexión con n8n.</p>';
+            }
+        }
+
+        // --- Funciones de Navegación ---
+        function buscarPendiente() {
+            cargarPantalla(GET_PENDIENTE, 'pendiente');
+        }
+
+        function buscarPorId(id = null) {
+            const targetId = id || document.getElementById('nav-id').value;
+            if(targetId) cargarPantalla(`${GET_NAVEGAR}&id_bloque=${targetId}`, 'navegar');
+        }
+
+        function buscarPorPagina() {
+            const pag = document.getElementById('nav-pag').value;
+            if(pag) cargarPantalla(`${GET_NAVEGAR}&pagina_origen=${pag}`, 'navegar');
+        }
+
+        function navegarTraduccion(cambio) {
+            if(bloqueActual) buscarPorId(parseInt(bloqueActual.id_bloque) + cambio);
+        }
+
+        function crearFilaContexto(bloque) {
+            const div = document.createElement('div');
+            const esActual = bloque.contexto === 'actual';
+            div.className = `traduccion-row row-${bloque.contexto}`;
+            
+            let textoIngles = bloque.texto_original || '';
+            const esTabla = (bloque.es_tabla === true || bloque.es_tabla === 'true' || bloque.es_tabla === 't' || bloque.es_tabla === 1);
+
+            // Resaltador del Glosario Dinámico
+            if (glosarioAprobado.length > 0) {
+                glosarioAprobado.forEach(item => {
+                    if (!item || !item.termino_original) return;
+                    const terminoEscapado = item.termino_original.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                    const regex = new RegExp(`\\b(${terminoEscapado})\\b`, 'gi');
+                    textoIngles = textoIngles.replace(regex, (match) => {
+                        const tooltip = `💡 Sugerencia: ${item.traduccion_sugerida || 'N/A'}\n📝 Nota: ${item.nota_contexto || 'Sin notas'}`;
+                        return `<span class="glosario-match" title="${tooltip}" style="cursor: help;">${match}</span>`;
+                    });
+                });
+            }
+
+            // --- CONSTRUCCIÓN DEL CONTENIDO VISUAL ---
+            let renderIngles = '';
+            let renderEspanol = '';
+            let btnCopiarIngles = '';
+
+            if (esTabla && textoIngles.includes('|')) {
+                // Generar Tabla HTML (Inglés)
+                const lineas = textoIngles.split('\n').map(l => l.trim()).filter(l => l.startsWith('|'));
+                const filas = lineas.filter(l => !/^\|[\-\s\|]+\|$/.test(l)); 
+                
+                renderIngles = '<table class="tabla-origen">';
+                filas.forEach(fila => {
+                    const celdas = fila.split('|').slice(1, -1);
+                    renderIngles += '<tr>' + celdas.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>';
+                });
+                renderIngles += '</table>';
+                
+                // Para copiar la tabla en crudo, la metemos oculta
+                renderIngles += `<div id="origen-md-${bloque.id_bloque}" style="display:none;">${bloque.texto_original}</div>`;
+                btnCopiarIngles = `<span onclick="copiarPortapapeles('origen-md-${bloque.id_bloque}', true)" title="Copiar Markdown original">📋</span>`;
+
+                // Construir Cuadrícula Editable (Español)
+                const cols = filas.length > 0 ? filas[0].split('|').slice(1, -1).length : 1;
+                
+                let celdasBorrador = [];
+                if (bloque.traduccion_borrador && bloque.traduccion_borrador.includes('|')) {
+                     const lineasB = bloque.traduccion_borrador.split('\n').map(l => l.trim()).filter(l => l.startsWith('|'));
+                     const filasB = lineasB.filter(l => !/^\|[\-\s\|]+\|$/.test(l));
+                     filasB.forEach(fila => celdasBorrador.push(...fila.split('|').slice(1, -1).map(c => c.trim())));
+                }
+
+                renderEspanol = `<div id="grid-traduccion-${bloque.id_bloque}" data-cols="${cols}" style="display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 5px; height: 100%;">`;
+                const totalCeldas = filas.length * cols;
+                for(let i=0; i < totalCeldas; i++) {
+                     renderEspanol += `<textarea class="celda-edit textarea-espanol" ${esActual ? '' : 'disabled'} placeholder="Celda ${i+1}">${celdasBorrador[i] || ''}</textarea>`;
+                }
+                renderEspanol += `</div>`;
+
+            } else {
+                // Texto Normal
+                renderIngles = `<div class="texto-ingles" id="origen-${bloque.id_bloque}">${textoIngles}</div>`;
+                btnCopiarIngles = `<span onclick="copiarPortapapeles('origen-${bloque.id_bloque}', true)" title="Copiar texto original">📋</span>`;
+                
+                renderEspanol = `<textarea class="textarea-espanol" id="traduccion-${bloque.id_bloque}" 
+                    ${esActual ? 'placeholder="Escribe tu traducción aquí..."' : 'disabled'}
+                >${bloque.traduccion_borrador || ''}</textarea>`;
+            }
+
+            const tieneRef = bloque.tipo_referencia && bloque.tipo_referencia.trim() !== '';
+
+            const contenido = `
+                <!-- Columna 1: Info -->
+                <div class="col-info">
+                    <span><strong>ID:</strong> ${bloque.id_bloque}</span>
+                    <span><strong>Sec:</strong> ${bloque.id_seccion}</span>
+                    <span><strong>Pág:</strong> ${bloque.pagina_origen}</span>
+                    ${tieneRef ? `<span class="badge-ref">Ref: ${bloque.tipo_referencia}</span>` : ''}
+                    ${esTabla ? `<span class="badge-tabla">[FORMATO TABLA]</span>` : ''}
+                    <span style="margin-top:10px; font-size:10px; font-weight:bold; color:${esActual ? '#c07a3c' : '#6b6356'}; text-transform:uppercase;">${bloque.contexto}</span>
+                </div>
+
+                <!-- Columna 2: Inglés -->
+                <div class="col-texto">
+                    ${renderIngles}
+                    <div class="btn-corner">${btnCopiarIngles}</div>
+                </div>
+
+                <!-- Columna 3: Español -->
+                <div class="col-texto">
+                    ${renderEspanol}
+                    ${esActual && !esTabla ? `
+                    <div class="btn-corner">
+                        <span onclick="pegarPortapapeles('traduccion-${bloque.id_bloque}')" title="Pegar del portapapeles">📥</span>
+                        <span onclick="copiarPortapapeles('traduccion-${bloque.id_bloque}', false)" title="Copiar traducción">📋</span>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <!-- Columna 4: Acciones -->
+                <div class="col-acciones">
+                    ${esActual ? `
+                        <button class="btn btn-main" onclick="guardarTraduccion()">Forjar y Siguiente</button>
+                        <button class="btn btn-danger" onclick="limpiarTraduccion('${bloque.id_bloque}')">Borrar Texto</button>
+                    ` : '<span style="color:#3c3222; text-align:center; font-size:12px;">Solo lectura</span>'}
+                </div>
+            `;
+            div.innerHTML = contenido;
+            return div;
+        }
+
+
+
+        // --- Funciones de Utilidad y Portapapeles ---
+        async function copiarPortapapeles(idElemento, esDiv) {
+            const elemento = document.getElementById(idElemento);
+            const texto = esDiv ? elemento.innerText : elemento.value;
+            try {
+                await navigator.clipboard.writeText(texto);
+            } catch (err) { console.error('Fallo al copiar', err); }
+        }
+
+        async function pegarPortapapeles(idElemento) {
+            try {
+                const texto = await navigator.clipboard.readText();
+                const textarea = document.getElementById(idElemento);
+                // Inserta el texto donde esté el cursor, o lo añade al final
+                const inicio = textarea.selectionStart;
+                const fin = textarea.selectionEnd;
+                textarea.value = textarea.value.substring(0, inicio) + texto + textarea.value.substring(fin);
+                textarea.selectionStart = textarea.selectionEnd = inicio + texto.length;
+                textarea.focus();
+            } catch (err) { console.error('Fallo al pegar. Revisa permisos del navegador.', err); }
+        }
+
+        function limpiarTraduccion(idElemento) {
+            const esTabla = (bloqueActual && (bloqueActual.es_tabla === true || bloqueActual.es_tabla === 'true' || bloqueActual.es_tabla === 't' || bloqueActual.es_tabla === 1));
+            if (esTabla) {
+                const grid = document.getElementById(`grid-traduccion-${idElemento}`);
+                if (grid) {
+                    grid.querySelectorAll('.celda-edit').forEach(ta => ta.value = '');
+                    grid.querySelector('.celda-edit').focus();
+                }
+            } else {
+                document.getElementById(`traduccion-${idElemento}`).value = '';
+                document.getElementById(`traduccion-${idElemento}`).focus();
+            }
+        }
+
+        // --- Guardado ---
+        async function guardarTraduccion() {
+            if (!bloqueActual) return;
+            
+            const esTabla = (bloqueActual.es_tabla === true || bloqueActual.es_tabla === 'true' || bloqueActual.es_tabla === 't' || bloqueActual.es_tabla === 1);
+            let traduccion = '';
+            let elementosBloqueo = [];
+            
+            if (esTabla) {
+                const grid = document.getElementById(`grid-traduccion-${bloqueActual.id_bloque}`);
+                if (!grid) return;
+                const cols = parseInt(grid.getAttribute('data-cols')) || 1;
+                const textareas = grid.querySelectorAll('.celda-edit');
+                elementosBloqueo = Array.from(textareas); // Los guardamos para deshabilitarlos al enviar
+                
+                textareas.forEach((ta, index) => {
+                    let texto = ta.value.replace(/\n/g, ' ').trim();
+                    traduccion += `| ${texto || ' '} `;
+                    if ((index + 1) % cols === 0) {
+                        traduccion += '|\n';
+                        // Inyectar fila de formato Markdown bajo los encabezados
+                        if (index + 1 === cols) traduccion += '|' + '---|'.repeat(cols) + '\n';
+                    }
+                });
+            } else {
+                const textarea = document.getElementById(`traduccion-${bloqueActual.id_bloque}`);
+                traduccion = textarea.value.trim();
+                elementosBloqueo = [textarea];
+            }
+            
+            // Si todo está en blanco (ignorando espacios o barras de Markdown), evitamos que avance.
+            if (!traduccion.trim() || traduccion.replace(/[\s\|-]/g, '') === '') {
+                return alert("El texto de la forja está vacío.");
+            }
+
+            // Bloquear interfaz para evitar doble clic
+            elementosBloqueo.forEach(el => el.disabled = true);
+
+            try {
+                const response = await fetch(POST_TRADUCCION, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+                    body: JSON.stringify({
+                        id_bloque: bloqueActual.id_bloque,
+                        traduccion_borrador: traduccion
+                    })
+                });
+
+                if (response.ok) {
+                    if (modoActual === 'pendiente') {
+                        buscarPendiente(); // Sigue despachando la fila
+                    } else {
+                        navegarTraduccion(1); // Si estás editando historia, avanza al siguiente ID secuencial
+                    }
+                } else {
+                    alert('Error al guardar en n8n.');
+                    elementosBloqueo.forEach(el => el.disabled = false);
+                }
+            } catch (error) { 
+                alert('Fallo de conexión.'); 
+                elementosBloqueo.forEach(el => el.disabled = false);
+            }
+        }
+        
+
+        // --- Carga del Glosario ---
+        async function inicializarForja() {
+            try {
+                const response = await fetch(GET_GLOSARIO, { headers: { 'Authorization': authHeader, 'ngrok-skip-browser-warning': 'true' } });
+                const data = await response.json();
+                if (Array.isArray(data)) {
+                    // Ordenamos de mayor a menor longitud para que frases como "Black Hole" se pinten antes que "Hole"
+                    glosarioAprobado = data.sort((a, b) => b.termino_original.length - a.termino_original.length);
+                }
+            } catch (error) { console.warn('No se pudo cargar el glosario', error); }
+            
+            // Ya con el glosario en memoria, buscamos los textos
+            buscarPendiente();
+        }
+
+        // Arrancar
+        inicializarForja();
+    </script>
+</body>
+</html>

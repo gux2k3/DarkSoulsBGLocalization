@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forja: Alimentador de Textos</title>
+    <style>
+        body { background-color: #0b0b0b; color: #d1c4a9; font-family: 'Georgia', serif; margin: 0; padding: 15px; background-image: radial-gradient(circle at center, #1a1815 0%, #0b0b0b 100%); min-height: 100vh; }
+        .header-controls { text-align: right; margin-bottom: -20px; position: relative; z-index: 10; }
+        .btn-logout { background-color: transparent; color: #8b8173; border: 1px solid #3c3222; padding: 5px 10px; font-size: 11px; cursor: pointer; border-radius: 2px; }
+        h1 { text-align: center; font-size: 22px; border-bottom: 1px solid #3c3222; padding-bottom: 15px; color: #c07a3c; }
+        .card { background-color: #141311; border: 1px solid #2a2520; margin-bottom: 15px; padding: 20px; border-radius: 2px; box-shadow: inset 0 0 15px rgba(0,0,0,0.9); }
+        label { display: block; color: #6b6356; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 1px; }
+        .input-dark { width: 100%; box-sizing: border-box; padding: 10px; background: #0f0f0f; color: #d1c4a9; border: 1px solid #3c3222; margin-bottom: 20px; border-radius: 2px; font-family: 'Georgia', serif; font-size: 16px; }
+        .input-dark:focus { outline: none; border-color: #c07a3c; }
+        .btn { padding: 10px 15px; border: 1px solid #333; border-radius: 2px; font-weight: bold; cursor: pointer; background-color: #1a1a1a; color: #8b8173; transition: all 0.2s ease; }
+        .btn:active { background-color: #3c3222; color: #d1c4a9; }
+        .btn-main { background: linear-gradient(to bottom, #4a3419, #24180a); color: #d1c4a9; width: 100%; font-size: 18px; border-color: #c07a3c; margin-top: 10px; }
+        .btn-main:active { background: #c07a3c; color: #0b0b0b; }
+        .page-control { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .page-control input { width: 80px; text-align: center; margin-bottom: 0; }
+
+        /* --- MODO CLARO (Controlado por el Cascarón) --- */
+        :root[data-theme="light"] body { 
+            background-color: #f4f1ea; background-image: none; color: #2a2520; 
+        }
+        :root[data-theme="light"] .card, 
+        :root[data-theme="light"] .traduccion-row { 
+            background-color: #ffffff; border-color: #d1c4a9; box-shadow: 0 2px 10px rgba(0,0,0,0.05); 
+        }
+        :root[data-theme="light"] .input-dark, 
+        :root[data-theme="light"] .textarea-espanol,
+        :root[data-theme="light"] .celda-edit,
+        :root[data-theme="light"] .texto-ingles,
+        :root[data-theme="light"] .tabla-origen,
+        :root[data-theme="light"] #contenedor-cuadricula { 
+            background: #faf9f6; color: #2a2520; border-color: #d1c4a9; 
+        }
+        :root[data-theme="light"] .input-dark:focus,
+        :root[data-theme="light"] .textarea-espanol:focus,
+        :root[data-theme="light"] .celda-edit:focus {
+            border-color: #c07a3c; box-shadow: 0 0 5px rgba(192, 122, 60, 0.3);
+        }
+        :root[data-theme="light"] .btn { background-color: #e8e3d9; color: #4a3419; border-color: #c07a3c; }
+        :root[data-theme="light"] .header, 
+        :root[data-theme="light"] h1 { border-color: #d1c4a9; color: #804a1e; }
+        :root[data-theme="light"] label,
+        :root[data-theme="light"] .col-info { color: #6b6356; }
+        :root[data-theme="light"] .btn-corner { background: #e8e3d9; border-color: #d1c4a9; color: #2a2520; }
+        :root[data-theme="light"] .btn-corner:hover { background: #d1c4a9; }
+        :root[data-theme="light"] .badge-tabla { background: #e8e3d9; color: #804a1e; border: 1px solid #d1c4a9; }
+        :root[data-theme="light"] #login-screen { background-color: #f4f1ea; }
+        :root[data-theme="light"] #login-screen > div { background-color: #ffffff; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+
+    <!-- PANTALLA DE LOGIN RESTRINGIDO -->
+    <div id="login-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #0b0b0b; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+        <div style="background-color: #141311; border: 1px solid #c07a3c; padding: 30px; width: 300px; text-align: center;">
+            <h2 style="color: #c07a3c; margin-top: 0;">Acceso a la Forja</h2>
+            <input type="text" id="api-user" class="input-dark" placeholder="Usuario">
+            <input type="password" id="api-pass" class="input-dark" placeholder="Contraseña">
+            <button class="btn btn-main" onclick="intentarAcceso()">Autenticar</button>
+            <div id="login-error" style="color: #e57373; font-size: 12px; margin-top: 10px; display: none;">Credenciales rechazadas</div>
+        </div>
+    </div>
+
+    <div class="header-controls">
+        <button class="btn-logout" onclick="cerrarSesion()">Abandonar Forja 🚪</button>
+    </div>
+
+    <h1>Alimentador de Textos</h1>
+
+    <div class="card">
+        <label>Sección del Índice</label>
+        <select id="select-seccion" class="input-dark">
+            <option value="">Cargando índice...</option>
+        </select>
+
+        <label>Página de Origen (PDF)</label>
+        <div class="page-control">
+            <button class="btn" onclick="ajustarPagina(-1)">-</button>
+            <input type="number" id="input-pagina" class="input-dark" value="1">
+            <button class="btn" onclick="ajustarPagina(1)">+</button>
+        </div>
+
+<!-- Nuevos Controles: Referencia y Tabla -->
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 15px; background: #1a1a1a; padding: 10px; border: 1px solid #3c3222; border-radius: 2px;">
+            <label style="margin: 0; display: flex; align-items: center; gap: 5px; color: #d1c4a9; cursor: pointer;">
+                <input type="checkbox" id="check-referencia" onchange="toggleReferencia()"> 
+                Contiene Referencia
+            </label>
+            <input type="text" id="input-referencia" class="input-dark" style="display: none; margin: 0; padding: 5px; width: 150px; font-size: 14px;" placeholder="Ej. pág 42, manual...">
+
+            <label style="margin: 0; display: flex; align-items: center; gap: 5px; color: #d1c4a9; cursor: pointer; margin-left: auto;">
+                <input type="checkbox" id="check-tabla" onchange="toggleTabla()"> 
+                Es Tabla
+            </label>
+            <div id="controles-tabla" style="display: none; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <input type="number" id="tabla-cols" class="input-dark" style="margin: 0; padding: 5px; width: 60px;" placeholder="Cols" value="2" min="1">
+                <span style="color: #6b6356;">x</span>
+                <input type="number" id="tabla-rows" class="input-dark" style="margin: 0; padding: 5px; width: 60px;" placeholder="Filas" value="2" min="1">
+                <button class="btn btn-secondary" style="padding: 5px 10px; margin: 0;" onclick="generarCuadricula()">Generar</button>
+                <button id="btn-switch-modo" class="btn" style="padding: 5px 10px; margin: 0; border-color: #c07a3c; color: #c07a3c;" onclick="alternarModoTabla()">Pasar a Markdown</button>
+            </div>
+        </div>
+
+        <label>Texto Original en Inglés (Copiar y Pegar del PDF)</label>
+        
+        <!-- Contenedor dinámico para la cuadrícula -->
+        <div id="contenedor-cuadricula" style="display: none; margin-bottom: 20px; background: #0f0f0f; padding: 10px; border: 1px solid #3c3222; overflow-x: auto;"></div>
+
+        <!-- El textarea original -->
+        <textarea id="texto-original" class="input-dark" rows="12" placeholder="Pega aquí los bloques de texto..."></textarea>
+       
+        <button class="btn" onclick="limpiarFormatoPDF()">🧹 Limpiar Saltos de Línea del PDF</button>
+        <button class="btn btn-secondary" onclick="corregirEspaciosPuntos()" style="width: auto; margin: 0;">🔤 Arreglar Espacio después de Puntuación</button>
+        <br><br>
+        <button class="btn btn-main" onclick="enviarTextos()">🔥 Sellar Textos en BD</button>
+        
+<!-- Navegador de Memoria -->
+        <div class="card" style="margin-top: 20px; border-color: #5a4b36;">
+            <h3 style="color: #c07a3c; margin-top: 0; font-size: 16px;">Navegador de Memoria (DB)</h3>
+            
+            <div class="page-control">
+                <button class="btn" onclick="navegarMemoria(-1)">-</button>
+                <input type="number" id="input-id-memoria" class="input-dark" style="margin-bottom: 0; width: 100px;" placeholder="ID">
+                <button class="btn" onclick="navegarMemoria(1)">+</button>
+                <button class="btn" onclick="buscarTextoPorId()">🔍 Buscar ID</button>
+            </div>
+            
+            <p id="texto-anterior" style="color: #8b8173; font-style: italic; background: #0f0f0f; padding: 10px; border: 1px solid #3c3222; border-radius: 2px;">Cargando último registro...</p>
+            
+            <button id="btn-editar-registro" class="btn" style="display: none; border-color: #c07a3c; color: #c07a3c; width: 100%;">✍️ Editar este registro</button>
+            <p id="aviso-edicion" style="color: #e57373; font-size: 12px; display: none; text-align: center; margin-top: 10px;">⚠️ MODO EDICIÓN ACTIVADO. Al "Sellar Textos", sobrescribirás este registro.</p>
+        </div>
+    </div>
+
+    <script>
+        
+        // --- SINCRONIZACIÓN DE TEMA ---
+        // 1. Al cargar la página, lee la preferencia del padre
+        const temaGuardado = localStorage.getItem('forja_theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', temaGuardado);
+
+        // 2. Escuchar en vivo si el usuario aprieta el botón en index.html
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.accion === 'cambiarTema') {
+                document.documentElement.setAttribute('data-theme', event.data.tema);
+            }
+        });
+
+ // URIs de n8n
+        const GET_INDICE = 'https://remold-good-gauging.ngrok-free.dev/webhook/obtener-indice';
+        const POST_TEXTOS = 'https://remold-good-gauging.ngrok-free.dev/webhook/capturar-texto';
+        const GET_TEXTO = 'https://remold-good-gauging.ngrok-free.dev/webhook/obtener-texto'; 
+
+        let authHeader = localStorage.getItem('api_token') || null;
+        let idBloqueAEditar = null;
+        let registroMemoriaActual = null; 
+        let ultimoIdGlobal = null;
+        let modoTabla = false;
+
+
+
+
+        // --- SEGURIDAD ---
+        async function intentarAcceso() {
+            const user = document.getElementById('api-user').value.trim();
+            const pass = document.getElementById('api-pass').value.trim();
+            if(!user || !pass) return;
+
+            const tokenTemporal = 'Basic ' + btoa(user + ':' + pass);
+            try {
+                const response = await fetch(GET_INDICE, { headers: { 'Authorization': tokenTemporal, 'ngrok-skip-browser-warning': 'true' } });
+                if (response.ok) {
+                    authHeader = tokenTemporal;
+                    localStorage.setItem('api_token', authHeader);
+                    document.getElementById('login-screen').style.display = 'none';
+                    cargarIndice();
+                } else {
+                    document.getElementById('login-error').style.display = 'block';
+                }
+            } catch (error) { console.error(error); }
+        }
+
+            function corregirEspaciosPuntos() {
+            const textarea = document.getElementById('texto-original');
+            if (!textarea) return;
+            
+            let texto = textarea.value;
+            
+            // 1. Corrige puntos seguidos de letras/números sin espacio (ej: "them.The" -> "them. The")
+            texto = texto.replace(/\.([a-zA-ZÁÉÍÓÚÑáéíóúñ0-9])/g, '. $1');
+            
+            // 2. Corrige comas pegadas a la siguiente palabra (ej: "alma,oscura" -> "alma, oscura")
+            texto = texto.replace(/,([a-zA-ZÁÉÍÓÚÑáéíóúñ0-9])/g, ', $1');
+
+            // 3. Corrige punto y coma pegado (ej: "fuego;ceniza" -> "fuego; ceniza")
+            texto = texto.replace(/;([a-zA-ZÁÉÍÓÚÑáéíóúñ0-9])/g, '; $1');
+
+            // 4. Corrige dos puntos pegados (ej: "nota:importante" -> "nota: importante")
+            // Nota: Evitamos alterar los tiempos o URLs comunes si llevan números exactos si es necesario, pero estándar aplica bien.
+            texto = texto.replace(/:([a-zA-ZÁÉÍÓÚÑáéíóúñ])/g, ': $1');
+            
+            // 5. Asegura que la letra después del punto y espacio sea mayúscula
+            texto = texto.replace(/\.\s+([a-zñáéíóú])/g, (match, p1) => '. ' + p1.toUpperCase());
+
+            textarea.value = texto;
+        }
+
+        function toggleReferencia() {
+            const inputRef = document.getElementById('input-referencia');
+            inputRef.style.display = document.getElementById('check-referencia').checked ? 'block' : 'none';
+        }
+
+        function toggleTabla() {
+            const esTabla = document.getElementById('check-tabla').checked;
+            document.getElementById('controles-tabla').style.display = esTabla ? 'flex' : 'none';
+            if (!esTabla) {
+                document.getElementById('contenedor-cuadricula').style.display = 'none';
+                document.getElementById('texto-original').style.display = 'block';
+            }
+        }
+
+        function generarCuadricula() {
+            const cols = parseInt(document.getElementById('tabla-cols').value) || 2;
+            const rows = parseInt(document.getElementById('tabla-rows').value) || 2;
+            const contenedor = document.getElementById('contenedor-cuadricula');
+            
+            contenedor.innerHTML = '';
+            contenedor.style.display = 'grid';
+            contenedor.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            contenedor.style.gap = '5px';
+
+            for (let i = 0; i < (cols * rows); i++) {
+                const input = document.createElement('textarea');
+                input.className = 'input-dark celda-tabla';
+                input.style.margin = '0';
+                input.style.minHeight = '60px';
+                input.placeholder = `Celda ${i + 1}`;
+                contenedor.appendChild(input);
+            }
+
+            document.getElementById('texto-original').style.display = 'none';
+            modoTabla = true;
+            document.getElementById('btn-switch-modo').innerText = 'Pasar a Markdown';
+        }
+
+        function cargarTablaDesdeMarkdown(markdown) {
+            if (!markdown) return;
+            
+            // Extraer solo las líneas que parezcan de tabla
+            const lineas = markdown.split('\n').map(l => l.trim()).filter(l => l.startsWith('|'));
+            if (lineas.length === 0) return;
+
+            // Filtrar la fila separadora de Markdown (ej: |---|---|)
+            const filasReales = lineas.filter(l => !/^\|[\-\s\|]+\|$/.test(l));
+            if (filasReales.length === 0) return;
+
+            // Determinar dimensiones leyendo la primera fila
+            const celdasPrimeraFila = filasReales[0].split('|').slice(1, -1);
+            const cols = celdasPrimeraFila.length;
+            const rows = filasReales.length;
+
+            document.getElementById('tabla-cols').value = cols;
+            document.getElementById('tabla-rows').value = rows;
+            
+            // Generar la cuadrícula vacía con esas dimensiones
+            generarCuadricula();
+
+            // Rellenar las cajas con los datos del Markdown
+            const celdasDOM = document.querySelectorAll('.celda-tabla');
+            let indexDOM = 0;
+
+            filasReales.forEach(fila => {
+                const celdas = fila.split('|').slice(1, -1);
+                celdas.forEach(celdaTexto => {
+                    if (celdasDOM[indexDOM]) {
+                        celdasDOM[indexDOM].value = celdaTexto.trim();
+                    }
+                    indexDOM++;
+                });
+            });
+            
+            document.getElementById('contenedor-cuadricula').style.display = 'grid';
+            document.getElementById('texto-original').style.display = 'none';
+            document.getElementById('btn-switch-modo').innerText = 'Pasar a Markdown';
+            modoTabla = true;
+        }
+
+        function alternarModoTabla() {
+            if (modoTabla) {
+                // De Cuadrícula a Markdown
+                const cols = parseInt(document.getElementById('tabla-cols').value) || 2;
+                const celdas = document.querySelectorAll('.celda-tabla');
+                let markdown = '';
+                
+                celdas.forEach((celda, index) => {
+                    let texto = celda.value.replace(/\n/g, ' ').trim();
+                    markdown += `| ${texto || ' '} `;
+                    if ((index + 1) % cols === 0) {
+                        markdown += '|\n';
+                        if (index + 1 === cols) {
+                            markdown += '|' + '---|'.repeat(cols) + '\n';
+                        }
+                    }
+                });
+
+                document.getElementById('texto-original').value = markdown;
+                document.getElementById('contenedor-cuadricula').style.display = 'none';
+                document.getElementById('texto-original').style.display = 'block';
+                document.getElementById('btn-switch-modo').innerText = 'Volver a Cuadrícula';
+                modoTabla = false;
+            } else {
+                // De Markdown a Cuadrícula (Parseo Inverso)
+                cargarTablaDesdeMarkdown(document.getElementById('texto-original').value);
+            }
+        }
+
+        function verificarSesion() {
+            if (authHeader) {
+                document.getElementById('login-screen').style.display = 'none';
+                cargarIndice();
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem('api_token');
+            location.reload();
+        }
+
+        // --- FUNCIONES DE CAPTURA ---
+        async function cargarIndice() {
+            try {
+                const response = await fetch(GET_INDICE, { headers: { 'Authorization': authHeader, 'ngrok-skip-browser-warning': 'true' } });
+                if(response.status === 401) return cerrarSesion();
+                
+                let data = await response.json();
+                let opciones = Array.isArray(data) ? data : [data];
+                
+                const select = document.getElementById('select-seccion');
+                select.innerHTML = '';
+                opciones.forEach(sec => {
+                    select.innerHTML += `<option value="${sec.id_seccion}">[${sec.categoria_padre}] - ${sec.nombre_seccion}</option>`;
+                });
+                cargarTextoMemoria();
+            } catch (error) { console.error("Error al cargar índice", error); }
+        }
+
+        function ajustarPagina(cambio) {
+            const input = document.getElementById('input-pagina');
+            let valorActual = parseInt(input.value) || 1;
+            if(valorActual + cambio > 0) input.value = valorActual + cambio;
+        }
+
+        function limpiarFormatoPDF() {
+            let texto = document.getElementById('texto-original').value;
+            // Separa el texto respetando los párrafos reales (doble salto de línea)
+            let parrafos = texto.split(/\n\s*\n/);
+            // Reemplaza los saltos de línea sencillos dentro de un mismo párrafo por espacios
+            let limpios = parrafos.map(p => p.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim());
+            // Vuelve a unir los párrafos con el formato correcto
+            document.getElementById('texto-original').value = limpios.join("\n\n");
+            // alert("Formato de PDF limpiado. Revisa que los párrafos estén correctos antes de enviarlos.");
+        }
+
+        async function enviarTextos() {
+            const id_seccion = document.getElementById('select-seccion').value;
+            const pagina_origen = document.getElementById('input-pagina').value;
+            let textoCrudo = document.getElementById('texto-original').value.trim();
+
+            if(!textoCrudo) return alert("No hay texto para forjar.");
+
+            // Separa cada bloque de texto como un registro independiente
+            let parrafos = textoCrudo.split(/\n\s*\n/).filter(p => p.trim() !== '');
+            
+
+            // 1. ARMAMOS EL PAQUETE
+            const payload = parrafos.map(p => {
+                let bloque = {
+                    id_seccion: parseInt(id_seccion),
+                    pagina_origen: parseInt(pagina_origen),
+                    texto_original: p,
+                    es_tabla: document.getElementById('check-tabla').checked,
+                    tipo_referencia: document.getElementById('check-referencia').checked ? document.getElementById('input-referencia').value : null
+                };
+                // Si presionaste "Corregir", le inyectamos el ID al paquete
+                if (idBloqueAEditar) {
+                    bloque.id_bloque = idBloqueAEditar;
+                }
+                return bloque;
+            });
+
+
+
+
+
+            try {
+                const response = await fetch(POST_TEXTOS, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+                    body: JSON.stringify({ datos: payload })
+                });
+
+                if (response.ok) {
+                    idBloqueAEditar = null;
+                    document.getElementById('aviso-edicion').style.display = 'none';
+                    document.getElementById('btn-editar-registro').style.display = 'inline-block';
+                    document.getElementById('texto-original').value = ''; 
+
+                    //alert(`Texto forjado exitosamente.`);
+                    
+                    cargarTextoMemoria();
+                } else {
+                    if(response.status === 401) cerrarSesion();
+                    else alert('Error en n8n al procesar.');
+                }
+            } catch (error) { alert('Fallo de conexión.'); }
+        }
+
+// --- FUNCIONES DEL NAVEGADOR DE MEMORIA ---
+        async function cargarTextoMemoria(id_bloque = null) {
+            let url = GET_TEXTO;
+            if (id_bloque) url += `?id_bloque=${id_bloque}`; 
+            
+            try {
+                const response = await fetch(url, { headers: { 'Authorization': authHeader, 'ngrok-skip-browser-warning': 'true' } });
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    registroMemoriaActual = data[0];
+                    document.getElementById('input-id-memoria').value = registroMemoriaActual.id_bloque || '';
+                    document.getElementById('texto-anterior').innerText = registroMemoriaActual.texto_original;
+                    document.getElementById('btn-editar-registro').style.display = 'inline-block';
+                    
+                    if (!id_bloque || id_bloque > (ultimoIdGlobal || 0)) {
+                        ultimoIdGlobal = registroMemoriaActual.id_bloque;
+                    }
+                }
+            } catch (error) { console.error("Error al cargar memoria", error); }
+        }
+
+        function navegarMemoria(cambio) {
+            let idActual = parseInt(document.getElementById('input-id-memoria').value) || 0;
+            let nuevoId = idActual + cambio;
+            
+            if (nuevoId > 0 && nuevoId <= (ultimoIdGlobal || 99999)) {
+                cargarTextoMemoria(nuevoId);
+            }
+        }
+
+        function buscarTextoPorId() {
+            let idBuscado = parseInt(document.getElementById('input-id-memoria').value);
+            if (idBuscado > 0) cargarTextoMemoria(idBuscado);
+        }
+
+// --- BOTÓN PARA EDITAR EL REGISTRO VISUALIZADO ---
+        document.getElementById('btn-editar-registro').addEventListener('click', function() {
+            if (!registroMemoriaActual) return;
+            
+            // 1. Asignar Identificadores
+            idBloqueAEditar = registroMemoriaActual.id_bloque;
+            
+            // 2. Seleccionar la Sección del Índice (Dropdown)
+            const selectSeccion = document.getElementById('select-seccion');
+            if (registroMemoriaActual.id_seccion) {
+                selectSeccion.value = registroMemoriaActual.id_seccion;
+            }
+            
+            // 3. Asignar la Página de Origen
+            document.getElementById('input-pagina').value = registroMemoriaActual.pagina_origen || 1;
+            
+            // 4. Configurar la Referencia (Checkbox y Texto)
+            const tieneReferencia = registroMemoriaActual.tipo_referencia && registroMemoriaActual.tipo_referencia.trim() !== '';
+            document.getElementById('check-referencia').checked = tieneReferencia;
+            document.getElementById('input-referencia').value = tieneReferencia ? registroMemoriaActual.tipo_referencia : '';
+            toggleReferencia(); // Actualiza visualmente si se muestra u oculta el input
+
+            // 5. Configurar si es Tabla (Checkbox y Controles)
+            const esTabla = (registroMemoriaActual.es_tabla === true || registroMemoriaActual.es_tabla === 'true');
+            document.getElementById('check-tabla').checked = esTabla;
+            toggleTabla(); // Muestra u oculta la barra de Cols/Rows
+
+            // 6. Volcar los Datos (Cols, Rows y Texto/Cuadrícula)
+            if (esTabla) {
+                // Al llamar a esta función, el sistema lee el Markdown de la DB, 
+                // cuenta las divisiones, asigna el valor exacto a tabla-cols y tabla-rows,
+                // y finalmente dibuja la cuadrícula con el texto acomodado.
+                cargarTablaDesdeMarkdown(registroMemoriaActual.texto_original);
+            } else {
+                // Si no es tabla, restaura el textarea normal
+                document.getElementById('texto-original').value = registroMemoriaActual.texto_original || '';
+                document.getElementById('contenedor-cuadricula').style.display = 'none';
+                document.getElementById('texto-original').style.display = 'block';
+                modoTabla = false;
+            }
+            
+            // 7. Cambiar la Interfaz a Modo Edición
+            document.getElementById('aviso-edicion').style.display = 'block';
+            this.style.display = 'none'; 
+        });
+
+        verificarSesion();
+    </script>
+</body>
+</html>
